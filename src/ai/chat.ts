@@ -63,16 +63,14 @@ export async function chat(
     return await generateJobApplication(
         userId,
         routerResult,
-        cvFile!,
-        history
+        cvFile!
     )
 }
 
 async function generateJobApplication(
     userId: string,
     intent: Extract<RouterIntent, { type: "job_application" }>,
-    cvFile: CVFile,
-    history: { role: "user" | "assistant"; content: string }[]
+    cvFile: CVFile
 ): Promise<ChatResult> {
     const applicationPrompt = intent.recipientEmail
         ? `Generate a job application email for this position. Send to: ${intent.recipientEmail}\n\nJob Description:\n${intent.jobDescription}`
@@ -91,10 +89,6 @@ async function generateJobApplication(
     ]
 
     const messages: ModelMessage[] = [
-        ...history.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-        })),
         { role: "user" as const, content: userContent },
     ]
 

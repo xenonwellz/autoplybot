@@ -194,6 +194,9 @@ Commands:
     }
 
     console.log(`Loading CV and generating response for user ${userId}`)
+
+    sendChatAction(chatId, "typing", botToken)
+
     const cvBuffer = await downloadCV(user.cvStorageKey)
     const cvFile = { buffer: cvBuffer, mimeType: user.cvMimeType! }
 
@@ -379,6 +382,36 @@ async function sendMessage(
             text,
         }),
     })
+}
+
+function sendMessageAsync(
+    chatId: number,
+    text: string,
+    botToken: string
+): void {
+    fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            chat_id: chatId,
+            text,
+        }),
+    }).catch((err) => console.error("Failed to send message:", err))
+}
+
+function sendChatAction(
+    chatId: number,
+    action: "typing" | "upload_document",
+    botToken: string
+): void {
+    fetch(`${TELEGRAM_API}${botToken}/sendChatAction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            chat_id: chatId,
+            action,
+        }),
+    }).catch((err) => console.error("Failed to send chat action:", err))
 }
 
 async function sendMessageWithConfirmation(
