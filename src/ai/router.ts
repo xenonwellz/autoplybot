@@ -1,4 +1,4 @@
-import { generateText, type ModelMessage } from "ai"
+import { generateText } from "ai"
 import { getLightModel } from "./client"
 import { stripMarkdown } from "../utils/text"
 
@@ -26,40 +26,60 @@ RULES:
 - Only classify as "job_application" if the user explicitly shares a job posting or asks to apply
 - If user asks general questions like "what jobs can I apply for?", that's a conversation, not an application`
 
+interface HistoryMessage {
+    role: string
+    content: string
+}
+
 export async function routeMessage(
     userMessage: string,
     cvText: string | null,
-    messageHistory: ModelMessage[]
+    messageHistory: HistoryMessage[]
 ): Promise<RouterIntent> {
-    const systemContent = cvText
-        ? `${ROUTER_SYSTEM_PROMPT}\n\nUser's CV content:\n${cvText}`
-        : `${ROUTER_SYSTEM_PROMPT}\n\nNOTE: The user has NOT uploaded a CV yet. If they ask about their CV or try to apply, remind them to upload it first.`
+    const cvContext = cvText
+        ? `\n\nUser's CV content:\n${cvText}`
+        : `\n\nNOTE: The user has NOT uploaded a CV yet. If they ask about their CV or try to apply, remind them to upload it first.`
 
-    const messages: ModelMessage[] = [
-        ...messageHistory,
-        { role: "user", content: userMessage },
-    ]
+    const historyText = messageHistory.length > 0
+        ? messageHistory.map((m) => `${m.role}: ${m.content}`).join("\n")
+        : ""
+
+    const fullPrompt = `${ROUTER_SYSTEM_PROMPT}${cvContext}
+
+${historyText ? `Previous conversation:\n${historyText}\n\n` : ""}User message: ${userMessage}
+
+Respond with the appropriate JSON format:`
 
     try {
         const result = await generateText({
             model: getLightModel(),
-            system: systemContent,
-            messages,
+            prompt: fullPrompt,
         })
 
         const text = result.text?.trim()
 
         if (!text) {
+            console.log("Router returned empty response")
             return {
                 type: "conversation",
                 response: "I'm here to help! Could you please tell me more about what you need?",
             }
         }
 
-        try {
-            const parsed = JSON.parse(text)
+        console.log("Router response:", text)
 
-            if (parsed.intent === "job_application") {
+        try {
+            const jsonMatch = text.match(/\{[\s\S]*\}/)
+            if (!jsonMatch) {
+                return {
+                    type: "conversation",
+                    response: stripMarkdown(text),
+                }
+            }
+
+            const parsed = JSON.parse(jsonMatch[0])
+
+            if (parsed.intent === "job_application" && parsed.jobDescription) {
                 return {
                     type: "job_application",
                     jobDescription: parsed.jobDescription,

@@ -45,7 +45,12 @@ export async function chat(
         content: msg.content,
     }))
 
-    const routerResult = await routeMessage(userMessage, cvText, modelMessages)
+    const historyForRouter = history.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+    }))
+
+    const routerResult = await routeMessage(userMessage, cvText, historyForRouter)
 
     if (routerResult.type === "conversation") {
         await saveMessage(userId, "assistant", routerResult.response)
