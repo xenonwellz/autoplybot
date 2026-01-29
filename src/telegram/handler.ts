@@ -1,6 +1,5 @@
 import { db } from "../lib/db"
 import { uploadCV, downloadCV } from "../lib/storage"
-import { extractCVText } from "../cv/extract"
 import { getAuthorizationUrl, getSendAsEmails } from "../gmail/oauth"
 import { sendEmailWithCV } from "../gmail/send"
 import { chat } from "../ai/chat"
@@ -194,11 +193,11 @@ Commands:
         return
     }
 
-    console.log(`Extracting CV and generating response for user ${userId}`)
+    console.log(`Loading CV and generating response for user ${userId}`)
     const cvBuffer = await downloadCV(user.cvStorageKey)
-    const cvText = await extractCVText(cvBuffer, user.cvMimeType!)
+    const cvFile = { buffer: cvBuffer, mimeType: user.cvMimeType! }
 
-    const result = await chat(userId, text, cvText)
+    const result = await chat(userId, text, cvFile)
 
     if (result.toolCalls?.length) {
         const emailTool = result.toolCalls.find((tc) => tc.name === "generate_email")

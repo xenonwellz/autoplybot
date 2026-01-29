@@ -8,7 +8,7 @@ export type RouterIntent =
 
 const ROUTER_SYSTEM_PROMPT = `You are a helpful assistant for a job application bot. Your job is to:
 1. Handle greetings and chit-chat naturally
-2. Answer questions about the user's CV if provided
+2. Answer questions about the user's CV if provided (the CV file is attached)
 3. Detect when a user wants to apply for a job
 
 IMPORTANT: You must respond in a specific JSON format based on the user's intent.
@@ -21,7 +21,7 @@ For ALL other messages (greetings, questions about CV, general chat):
 
 RULES:
 - Be concise and friendly
-- When asked about the CV, reference specific details from it
+- When asked about the CV, reference specific details from the attached file
 - NEVER generate markdown - use plain text only
 - Only classify as "job_application" if the user explicitly shares a job posting or asks to apply
 - If user asks general questions like "what jobs can I apply for?", that's a conversation, not an application`
@@ -31,29 +31,49 @@ interface HistoryMessage {
     content: string
 }
 
+interface CVFile {
+    buffer: Buffer
+    mimeType: string
+}
+
 export async function routeMessage(
     userMessage: string,
-    cvText: string | null,
+    cvFile: CVFile | null,
     messageHistory: HistoryMessage[]
 ): Promise<RouterIntent> {
-    const cvContext = cvText
-        ? `\n\nUser's CV content:\n${cvText}`
-        : `\n\nNOTE: The user has NOT uploaded a CV yet. If they ask about their CV or try to apply, remind them to upload it first.`
-
     const historyText = messageHistory.length > 0
         ? messageHistory.map((m) => `${m.role}: ${m.content}`).join("\n")
         : ""
 
-    const fullPrompt = `${ROUTER_SYSTEM_PROMPT}${cvContext}
+    const userContent: Array<{ type: "text"; text: string } | { type: "file"; data: Buffer; mediaType: string }> = []
 
-${historyText ? `Previous conversation:\n${historyText}\n\n` : ""}User message: ${userMessage}
+    if (cvFile) {
+        userContent.push({
+            type: "file",
+            data: cvFile.buffer,
+            mediaType: cvFile.mimeType,
+        })
+    }
 
-Respond with the appropriate JSON format:`
+    const cvNote = cvFile
+        ? "The user's CV is attached above."
+        : "NOTE: The user has NOT uploaded a CV yet. If they ask about their CV or try to apply, remind them to upload it first."
+
+    userContent.push({
+        type: "text",
+        text: `${historyText ? `Previous conversation:\n${historyText}\n\n` : ""}${cvNote}\n\nUser message: ${userMessage}\n\nRespond with the appropriate JSON format:`,
+    })
 
     try {
         const result = await generateText({
             model: getLightModel(),
-            prompt: fullPrompt,
+            system: ROUTER_SYSTEM_PROMPT,
+            messages: [
+                {
+                    role: "user",
+                    content: userContent,
+                },
+            ],
         })
 
         const text = result.text?.trim()

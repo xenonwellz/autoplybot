@@ -10,7 +10,7 @@ const GENERATION_SYSTEM_PROMPT = `You are a professional job application assista
 STRICT RULES:
 1. You MUST use the generate_email tool to create job applications
 2. You NEVER generate markdown - all output must be plain text
-3. You ground all content strictly in the user's actual experience from their CV
+3. You ground all content strictly in the user's actual experience from their CV (attached as a file)
 4. You NEVER invent or exaggerate skills or experience
 5. After generating, present a brief summary and wait for confirmation
 
@@ -31,26 +31,26 @@ export interface ChatResult {
     routedBy: "light" | "heavy"
 }
 
+export interface CVFile {
+    buffer: Buffer
+    mimeType: string
+}
+
 export async function chat(
     userId: string,
     userMessage: string,
-    cvText: string | null
+    cvFile: CVFile | null
 ): Promise<ChatResult> {
     const history = await getMessageHistory(userId)
 
     await saveMessage(userId, "user", userMessage)
-
-    const modelMessages: ModelMessage[] = history.map((msg) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-    }))
 
     const historyForRouter = history.map((msg) => ({
         role: msg.role,
         content: msg.content,
     }))
 
-    const routerResult = await routeMessage(userMessage, cvText, historyForRouter)
+    const routerResult = await routeMessage(userMessage, cvFile, historyForRouter)
 
     if (routerResult.type === "conversation") {
         await saveMessage(userId, "assistant", routerResult.response)
@@ -63,31 +63,44 @@ export async function chat(
     return await generateJobApplication(
         userId,
         routerResult,
-        cvText!,
-        modelMessages
+        cvFile!,
+        history
     )
 }
 
 async function generateJobApplication(
     userId: string,
     intent: Extract<RouterIntent, { type: "job_application" }>,
-    cvText: string,
-    history: ModelMessage[]
+    cvFile: CVFile,
+    history: { role: "user" | "assistant"; content: string }[]
 ): Promise<ChatResult> {
-    const systemContent = `${GENERATION_SYSTEM_PROMPT}\n\nUser's CV content:\n${cvText}`
-
     const applicationPrompt = intent.recipientEmail
         ? `Generate a job application email for this position. Send to: ${intent.recipientEmail}\n\nJob Description:\n${intent.jobDescription}`
         : `Generate a job application email for this position. Ask the user for the recipient email after generating.\n\nJob Description:\n${intent.jobDescription}`
 
+    const userContent: Array<{ type: "text"; text: string } | { type: "file"; data: Buffer; mediaType: string }> = [
+        {
+            type: "file",
+            data: cvFile.buffer,
+            mediaType: cvFile.mimeType,
+        },
+        {
+            type: "text",
+            text: applicationPrompt,
+        },
+    ]
+
     const messages: ModelMessage[] = [
-        ...history,
-        { role: "user", content: applicationPrompt },
+        ...history.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+        })),
+        { role: "user" as const, content: userContent },
     ]
 
     const result = await generateText({
         model: getHeavyModel(),
-        system: systemContent,
+        system: GENERATION_SYSTEM_PROMPT,
         messages,
         tools,
         stopWhen: stepCountIs(5),
@@ -122,10 +135,13 @@ async function getMessageHistory(userId: string) {
         take: 20,
     })
 
-    return messages.reverse().map((msg) => ({
-        role: msg.role,
-        content: `[${formatTimestamp(msg.timestamp)}] ${stripMarkdown(msg.content)}`,
-    }))
+    return messages
+        .reverse()
+        .filter((msg) => msg.role === "user" || msg.role === "assistant")
+        .map((msg) => ({
+            role: msg.role as "user" | "assistant",
+            content: `[${formatTimestamp(msg.timestamp)}] ${stripMarkdown(msg.content)}`,
+        }))
 }
 
 async function saveMessage(userId: string, role: string, content: string) {
