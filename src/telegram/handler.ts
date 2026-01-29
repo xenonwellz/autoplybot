@@ -57,7 +57,9 @@ export async function handleUpdate(
     update: TelegramUpdate,
     botToken: string
 ): Promise<void> {
+    console.log("Incoming Telegram update:", JSON.stringify(update, null, 2))
     if (update.callback_query) {
+        console.log(`Handling callback query: ${update.callback_query.data} from ${update.callback_query.from.id}`)
         await handleCallback(update.callback_query, botToken)
         return
     }
@@ -68,6 +70,8 @@ export async function handleUpdate(
     const chatId = message.chat.id
     const telegramId = message.from?.id?.toString()
 
+    console.log(`Processing message from ${telegramId} in chat ${chatId}`)
+
     if (!telegramId) return
 
     const user = await getOrCreateUser(
@@ -77,11 +81,13 @@ export async function handleUpdate(
     )
 
     if (message.document) {
+        console.log(`Document received: ${message.document.file_name} (${message.document.mime_type})`)
         await handleDocument(message.document, user.id, chatId, botToken)
         return
     }
 
     if (message.text) {
+        console.log(`Text message received: "${message.text}"`)
         await handleText(message.text, user.id, chatId, botToken)
     }
 }
@@ -179,6 +185,7 @@ Commands:
 
     const user = await db.user.findUnique({ where: { id: userId } })
     if (!user?.cvStorageKey) {
+        console.log(`User ${userId} attempted application without CV`)
         await sendMessage(
             chatId,
             "Please upload your CV first before I can help with job applications.",
@@ -187,6 +194,7 @@ Commands:
         return
     }
 
+    console.log(`Extracting CV and generating response for user ${userId}`)
     const cvBuffer = await downloadCV(user.cvStorageKey)
     const cvText = await extractCVText(cvBuffer, user.cvMimeType!)
 
@@ -195,7 +203,9 @@ Commands:
     if (result.toolCalls?.length) {
         const emailTool = result.toolCalls.find((tc) => tc.name === "generate_email")
         if (emailTool) {
+            console.log(`Email generated for ${userId} to ${emailTool.args.recipientEmail}`)
             const { result: toolResult, args } = emailTool
+            // ... (rest of tool handling)
 
             pendingEmails.set(userId, {
                 subject: toolResult.subject,

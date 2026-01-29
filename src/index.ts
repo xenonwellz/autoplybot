@@ -1,10 +1,13 @@
 import { Hono } from "hono"
+import { logger } from "hono/logger"
 import { env } from "./lib/env"
 import { handleUpdate } from "./telegram/handler"
 import { exchangeCodeForTokens } from "./gmail/oauth"
 import { db } from "./lib/db"
 
 const app = new Hono()
+
+app.use("*", logger())
 
 app.get("/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() })
@@ -53,6 +56,7 @@ app.get("/oauth/callback", async (c) => {
     }
 
     await exchangeCodeForTokens(code, user.id)
+    console.log(`Gmail successfully connected for user: ${user.id} (${user.telegramId})`)
 
     return c.html(`
       <html>
