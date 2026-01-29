@@ -1,0 +1,27 @@
+{
+  "name": "autoply-bot",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "db:generate": "bunx prisma generate",
+    "db:push": "bunx prisma db push",
+    "db:migrate": "bunx prisma migrate dev",
+    "lint": "bunx oxlint src/",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.22",
+    "@prisma/client": "^7.3.0",
+    "ai": "^6.0.61",
+    "dotenv": "^17.2.3",
+    "hono": "^4.11.7",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxlint": "^1.42.0",
+    "prisma": "^7.3.0",
+    "typescript": "^5.9.3"
+  }
+}

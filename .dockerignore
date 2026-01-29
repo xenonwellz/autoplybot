@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Test
+coverage/
+.nyc_output/
+
+# Documentation
+README.md
+docs/
+
+# Development files
+*.md
+!README.md
