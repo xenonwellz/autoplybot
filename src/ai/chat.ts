@@ -1,24 +1,23 @@
 import { generateText, type ModelMessage, type StaticToolResult, stepCountIs } from "ai"
 import { db } from "../lib/db"
-import { getModel } from "./client"
+import { getHeavyModel } from "./client"
+import { routeMessage, type RouterIntent } from "./router"
 import { tools, type GenerateEmailInput, type GenerateEmailOutput } from "./tools"
 import { stripMarkdown, formatTimestamp } from "../utils/text"
 
-const SYSTEM_PROMPT = `You are a professional job application assistant. Your role is to help users apply for jobs by generating tailored application emails.
+const GENERATION_SYSTEM_PROMPT = `You are a professional job application assistant. Your role is to generate tailored application emails.
 
 STRICT RULES:
-1. You MUST use the generate_email tool when asked to create a job application
+1. You MUST use the generate_email tool to create job applications
 2. You NEVER generate markdown - all output must be plain text
-3. You MUST refuse to generate job applications if the user has not uploaded a CV
-4. You ground all content strictly in the user's actual experience from their CV
-5. You NEVER invent or exaggerate skills or experience
-6. You are helpful but concise
+3. You ground all content strictly in the user's actual experience from their CV
+4. You NEVER invent or exaggerate skills or experience
+5. After generating, present a brief summary and wait for confirmation
 
-When a user shares a job description:
-1. Confirm you have their CV on file
-2. Ask for the recipient email if not provided
-3. Use the generate_email tool to create the application
-4. Present the preview and ask for confirmation before sending`
+When generating an email:
+1. Analyze the job requirements against the CV
+2. Use the generate_email tool with all relevant details
+3. Present the preview and ask for confirmation before sending`
 
 export interface ChatToolCall {
     name: string
@@ -26,34 +25,63 @@ export interface ChatToolCall {
     result: GenerateEmailOutput
 }
 
+export interface ChatResult {
+    response: string
+    toolCalls?: ChatToolCall[]
+    routedBy: "light" | "heavy"
+}
+
 export async function chat(
     userId: string,
     userMessage: string,
     cvText: string | null
-): Promise<{
-    response: string
-    toolCalls?: ChatToolCall[]
-}> {
+): Promise<ChatResult> {
     const history = await getMessageHistory(userId)
 
     await saveMessage(userId, "user", userMessage)
 
-    const messages: ModelMessage[] = history.map((msg) => ({
+    const modelMessages: ModelMessage[] = history.map((msg) => ({
         role: msg.role as "user" | "assistant",
         content: msg.content,
     }))
 
-    messages.push({
-        role: "user",
-        content: userMessage,
-    })
+    const routerResult = await routeMessage(userMessage, cvText, modelMessages)
 
-    const systemContent = cvText
-        ? `${SYSTEM_PROMPT}\n\nUser's CV content:\n${cvText}`
-        : `${SYSTEM_PROMPT}\n\nNOTE: The user has NOT uploaded a CV yet. Remind them to upload their CV before applying for jobs.`
+    if (routerResult.type === "conversation") {
+        await saveMessage(userId, "assistant", routerResult.response)
+        return {
+            response: routerResult.response,
+            routedBy: "light",
+        }
+    }
+
+    return await generateJobApplication(
+        userId,
+        routerResult,
+        cvText!,
+        modelMessages
+    )
+}
+
+async function generateJobApplication(
+    userId: string,
+    intent: Extract<RouterIntent, { type: "job_application" }>,
+    cvText: string,
+    history: ModelMessage[]
+): Promise<ChatResult> {
+    const systemContent = `${GENERATION_SYSTEM_PROMPT}\n\nUser's CV content:\n${cvText}`
+
+    const applicationPrompt = intent.recipientEmail
+        ? `Generate a job application email for this position. Send to: ${intent.recipientEmail}\n\nJob Description:\n${intent.jobDescription}`
+        : `Generate a job application email for this position. Ask the user for the recipient email after generating.\n\nJob Description:\n${intent.jobDescription}`
+
+    const messages: ModelMessage[] = [
+        ...history,
+        { role: "user", content: applicationPrompt },
+    ]
 
     const result = await generateText({
-        model: getModel(),
+        model: getHeavyModel(),
         system: systemContent,
         messages,
         tools,
@@ -61,7 +89,6 @@ export async function chat(
     })
 
     const responseText = stripMarkdown(result.text)
-
     await saveMessage(userId, "assistant", responseText)
 
     type ToolsType = typeof tools
@@ -79,6 +106,7 @@ export async function chat(
     return {
         response: responseText,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        routedBy: "heavy",
     }
 }
 

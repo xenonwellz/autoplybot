@@ -21,7 +21,8 @@ const envSchema = z.object({
 
     // AI
     OPENROUTER_API_KEY: z.string().min(1),
-    OPENROUTER_MODEL: z.string().default("moonshotai/kimi-k2.5"),
+    OPENROUTER_LIGHT_MODEL: z.string().default("google/gemini-2.5-flash-lite"),
+    OPENROUTER_HEAVY_MODEL: z.string().default("moonshotai/kimi-k2.5"),
 
     // Encryption
     ENCRYPTION_KEY: z.string().length(64),

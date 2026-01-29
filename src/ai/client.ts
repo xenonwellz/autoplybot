@@ -6,6 +6,10 @@ export const openrouter = createOpenAI({
     baseURL: "https://openrouter.ai/api/v1",
 })
 
-export function getModel() {
-    return openrouter(env.OPENROUTER_MODEL)
+export function getLightModel() {
+    return openrouter(env.OPENROUTER_LIGHT_MODEL)
+}
+
+export function getHeavyModel() {
+    return openrouter(env.OPENROUTER_HEAVY_MODEL)
 }
